@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SemanticCache Demo</title>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#1c1c1a; --mute:#6b6b66; --line:#e4e4df;
+          --hit:#0f7b4a; --hitbg:#e3f4ec; --miss:#a85a00; --missbg:#fdf0dc; --acc:#3b5bdb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161615; --card:#1f1f1d; --ink:#ececE8; --mute:#9a9a94; --line:#2e2e2b;
+            --hit:#4fd69a; --hitbg:#12301f; --miss:#f0b055; --missbg:#35260f; --acc:#8ea2ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:22px; margin:0 0 4px; } .sub { color:var(--mute); margin:0 0 20px; }
+  .grid { display:grid; grid-template-columns:1.4fr 1fr; gap:16px; }
+  @media (max-width:760px) { .grid { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  textarea { width:100%; min-height:72px; resize:vertical; padding:10px; border-radius:8px;
+             border:1px solid var(--line); background:var(--bg); color:var(--ink); font:inherit; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:9px 16px;
+           font:inherit; cursor:pointer; } button:disabled { opacity:.5; cursor:wait; }
+  button.ghost { background:transparent; color:var(--mute); border:1px solid var(--line); }
+  label { color:var(--mute); font-size:13px; display:flex; gap:6px; align-items:center; }
+  .badge { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; }
+  .hit { background:var(--hitbg); color:var(--hit); } .miss { background:var(--missbg); color:var(--miss); }
+  .log { margin-top:16px; display:flex; flex-direction:column; gap:10px; }
+  .item { border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+  .item .q { font-weight:600; } .item .a { color:var(--mute); margin:6px 0; white-space:pre-wrap; }
+  .meta { font-size:12.5px; color:var(--mute); display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stat { border:1px solid var(--line); border-radius:10px; padding:10px; }
+  .stat b { display:block; font-size:20px; } .stat span { color:var(--mute); font-size:12px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .chip { font-size:12.5px; border:1px solid var(--line); border-radius:99px; padding:3px 10px;
+          background:transparent; color:var(--ink); cursor:pointer; }
+  .err { color:#c0392b; margin-top:10px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SemanticCache</h1>
+  <p class="sub">Ask a question, then ask it again in different words. Similar questions are served from the cache.</p>
+  <div class="grid">
+    <section class="card">
+      <textarea id="q" placeholder="Ask anything, e.g. What is the capital of France?"></textarea>
+      <div class="chips" id="chips"></div>
+      <div class="row">
+        <button id="ask">Ask</button>
+        <label><input type="checkbox" id="bypass"> bypass cache</label>
+        <button class="ghost" id="clear">Clear cache</button>
+      </div>
+      <div class="err" id="err"></div>
+      <div class="log" id="log"></div>
+    </section>
+    <aside class="card">
+      <b>Live metrics</b>
+      <div class="stats" id="stats" style="margin-top:10px"></div>
+    </aside>
+  </div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const samples = [
+  "What is the capital of France?", "Which city is the capital of France?",
+  "What is the capital of Germany?", "How do I enable dark mode in Chrome?",
+  "How do I disable dark mode in Chrome?"];
+$("chips").innerHTML = samples.map(s => `<button class="chip">${s}</button>`).join("");
+document.querySelectorAll(".chip").forEach(c => c.onclick = () => { $("q").value = c.textContent; ask(); });
+
+async function ask() {
+  const query = $("q").value.trim(); if (!query) return;
+  $("ask").disabled = true; $("err").textContent = "";
+  try {
+    const r = await fetch("/v1/chat", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ query, bypass_cache: $("bypass").checked }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || r.statusText);
+    const hit = d.cached || d.cache.kind === "coalesced";
+    const el = document.createElement("div"); el.className = "item";
+    const esc = t => t.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+    el.innerHTML = `<div class="q">${esc(query)}</div><div class="a">${esc(d.answer)}</div>
+      <div class="meta"><span class="badge ${hit?"hit":"miss"}">${hit?"CACHE HIT":"MISS"} · ${d.cache.kind}</span>
+      <span>${d.latency_ms.total.toFixed(0)} ms</span>
+      ${d.cache.similarity!=null?`<span>similarity ${d.cache.similarity.toFixed(3)}</span>`:""}
+      ${d.cache.matched_query?`<span>matched: “${esc(d.cache.matched_query)}”</span>`:""}
+      ${d.cache.verifier_rejections?`<span>verifier rejected ${d.cache.verifier_rejections}</span>`:""}
+      ${!hit&&d.cache.nearest_similarity!=null?`<span>nearest was ${d.cache.nearest_similarity.toFixed(3)}</span>`:""}
+      </div>`;
+    $("log").prepend(el);
+  } catch (e) { $("err").textContent = "Error: " + e.message; }
+  $("ask").disabled = false; refresh();
+}
+async function refresh() {
+  try {
+    const m = await (await fetch("/v1/metrics")).json();
+    const f = v => v == null ? "–" : v + " ms";
+    const cells = [["Requests", m.requests], ["Hit rate", (m.hit_rate*100).toFixed(0)+"%"],
+      ["LLM calls saved", m.llm_calls_saved], ["Verifier rejections", m.verifier_rejections],
+      ["Hit p50", f(m.latency_ms.hit_p50)], ["Miss p50", f(m.latency_ms.miss_p50)],
+      ["Tokens saved", m.tokens.saved_in + m.tokens.saved_out], ["Cache entries", m.cache_entries]];
+    $("stats").innerHTML = cells.map(([k,v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join("");
+  } catch (e) {}
+}
+$("ask").onclick = ask;
+$("q").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } });
+$("clear").onclick = async () => { await fetch("/v1/cache", { method:"DELETE" }); $("log").innerHTML = ""; refresh(); };
+refresh(); setInterval(refresh, 3000);
+</script>
+</body>
+</html>

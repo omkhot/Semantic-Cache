@@ -1,0 +1,13 @@
+# Start with:  docker compose up --build
+# Reads GEMINI_API_KEY etc. from your .env file. The cache is stored in ./data.
+services:
+  semantic-cache:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      PERSIST_DIR: /app/data/cache_store
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

@@ -1,0 +1,9 @@
+# Runtime dependencies. Install with:  pip install -r requirements.txt
+fastapi>=0.110
+uvicorn[standard]>=0.27
+httpx>=0.27
+numpy>=1.26
+pydantic>=2.5
+# Local embedding model + cross-encoder verifier (downloads ~90 MB model on first run).
+# This also installs PyTorch, so the first install takes a few minutes.
+sentence-transformers>=3.0

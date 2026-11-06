@@ -1,0 +1,5 @@
+# OPTIONAL: FAISS vector index. The project works without it (NumPy fallback),
+# but FAISS is faster on large caches and looks good on a resume.
+# Install with:  pip install -r requirements-faiss.txt
+# If pip cannot find a wheel for your Python version, just skip this file.
+faiss-cpu>=1.8

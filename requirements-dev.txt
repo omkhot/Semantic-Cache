@@ -1,0 +1,5 @@
+# Extras for testing and evaluation. Install with:  pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8.0
+matplotlib>=3.8        # threshold-sweep plots
+datasets>=2.19         # downloads the Quora Question Pairs benchmark (evaluation --dataset qqp)
